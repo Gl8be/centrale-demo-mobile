@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Centrale — Oggi (mobile)</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: #f7f7f5; color: #111; }
+  header { background: #fff; border-bottom: 1px solid #ddd; padding: 14px 16px; font-weight: 600; font-size: 17px; position: sticky; top: 0; z-index: 10; }
+  .list { background: #fff; }
+  .row { padding: 16px; border-bottom: 1px solid #eee; cursor: pointer; }
+  .row.active { background: #e8f0fe; }
+  .meta { font-size: 14px; color: #666; margin-top: 4px; }
+  .due { color: #c00; font-weight: 600; }
+  .detail { padding: 16px; background: #fff; min-height: 60vh; }
+  .detail h2 { margin-top: 0; font-size: 20px; }
+  button { display: block; width: 100%; padding: 14px; margin: 8px 0; font-size: 16px; border-radius: 8px; border: 1px solid #ccc; background: #fff; }
+  button.primary { background: #1a73e8; color: #fff; border: none; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #ccc; padding: 16px; box-shadow: 0 -4px 12px rgba(0,0,0,.1); }
+  input, textarea { width: 100%; margin: 6px 0 10px; padding: 12px; font-size: 16px; box-sizing: border-box; border-radius: 6px; border: 1px solid #ccc; }
+  .hint { font-size: 14px; color: #555; margin: 8px 0; }
+  .back { background: none; border: none; color: #1a73e8; font-size: 16px; padding: 0 0 12px; width: auto; }
+</style>
+</head>
+<body>
+<header>Centrale — Oggi</header>
+<div id="listView"></div>
+<div id="detailView" style="display:none"></div>
+<div id="sheet" class="sheet" style="display:none">
+  <strong>Segna il contatto</strong>
+  <p class="hint">Cosa è successo e qual è il prossimo passo.</p>
+  <textarea id="outcome" rows="3" placeholder="Esito (cosa ha detto o fatto il cliente)"></textarea>
+  <input id="next" placeholder="Prossima azione (una riga)">
+  <input id="date" type="date">
+  <button class="primary" onclick="saveOutcome()">Conferma</button>
+  <button onclick="closeSheet()">Annulla</button>
+</div>
+
+<script>
+const STORAGE_KEY = "centrale_prova_ciclo_mobile_v1";
+
+const seed = [
+  { id: "p1", client: "Rossi", lot: "Via Roma 12", stage: "In trattativa", next_action: "Chiamare per visita", next_action_date: new Date().toISOString().slice(0,10), last_outcome: "", conversation_link: null },
+  { id: "p2", client: "Bianchi", lot: "Lotto A", stage: "Primo contatto", next_action: "Inviare scheda", next_action_date: new Date().toISOString().slice(0,10), last_outcome: "", conversation_link: null },
+  { id: "p3", client: "Bianchi", lot: "Lotto B", stage: "Primo contatto", next_action: "Attendere risposta", next_action_date: null, last_outcome: "", conversation_link: null }
+];
+
+let proposals = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || seed;
+let currentId = null;
+
+function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(proposals)); }
+function today() { return new Date().toISOString().slice(0,10); }
+
+function showList() {
+  document.getElementById("detailView").style.display = "none";
+  document.getElementById("listView").style.display = "block";
+  const list = document.getElementById("listView");
+  list.innerHTML = "";
+  const due = proposals.filter(p => p.next_action_date && p.next_action_date <= today());
+  const later = proposals.filter(p => !p.next_action_date || p.next_action_date > today());
+  [...due, ...later].forEach(p => {
+    const div = document.createElement("div");
+    div.className = "row";
+    const isDue = p.next_action_date && p.next_action_date <= today();
+    div.innerHTML = `<strong>${p.client} — ${p.lot}</strong>
+      <div class="meta ${isDue ? 'due' : ''}">${p.next_action || "—"} ${p.next_action_date || ""}</div>`;
+    div.onclick = () => select(p.id);
+    list.appendChild(div);
+  });
+}
+
+function select(id) {
+  currentId = id;
+  const p = proposals.find(x => x.id === id);
+  document.getElementById("listView").style.display = "none";
+  const detail = document.getElementById("detailView");
+  detail.style.display = "block";
+  detail.innerHTML = `
+    <div class="detail">
+      <button class="back" onclick="showList()">← Oggi</button>
+      <h2>${p.client} — ${p.lot}</h2>
+      <p>Stato: ${p.stage}</p>
+      <p>Prossima azione: <strong>${p.next_action || "—"}</strong><br>${p.next_action_date || ""}</p>
+      <p>Ultimo esito: ${p.last_outcome || "—"}</p>
+      <p>Ultima conversazione: ${p.conversation_link || "—"}</p>
+      <button class="primary" onclick="openSheet()">Segna il contatto</button>
+      <button onclick="linkConversation()">Collega una conversazione</button>
+      <p class="hint">Dopo ogni conferma, ricarica la pagina per verificare che tutto resti.</p>
+    </div>
+  `;
+}
+
+function openSheet() {
+  const p = proposals.find(x => x.id === currentId);
+  document.getElementById("outcome").value = "";
+  document.getElementById("next").value = p.next_action || "";
+  document.getElementById("date").value = p.next_action_date || today();
+  document.getElementById("sheet").style.display = "block";
+}
+
+function closeSheet() { document.getElementById("sheet").style.display = "none"; }
+
+function saveOutcome() {
+  const p = proposals.find(x => x.id === currentId);
+  p.last_outcome = document.getElementById("outcome").value;
+  p.next_action = document.getElementById("next").value;
+  p.next_action_date = document.getElementById("date").value || null;
+  p.updated_at = new Date().toISOString();
+  save();
+  closeSheet();
+  select(currentId);
+}
+
+function linkConversation() {
+  const p = proposals.find(x => x.id === currentId);
+  const summary = prompt("Breve nota su questa conversazione:", "Messaggio inviato");
+  if (summary === null) return;
+  p.conversation_link = summary + " (" + new Date().toLocaleString("it-IT") + ")";
+  p.updated_at = new Date().toISOString();
+  save();
+  select(currentId);
+}
+
+showList();
+</script>
+</body>
+</html>
